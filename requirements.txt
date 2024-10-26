@@ -2,3 +2,4 @@ streamlit
 requests
 pillow
 streamlit-drawable-canvas
+replicate

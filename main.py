@@ -1,4 +1,5 @@
 # app.py
+
 import streamlit as st
 import requests
 import json
@@ -11,7 +12,7 @@ st.set_page_config(layout="wide")
 
 # Sidebar for API Key
 st.sidebar.title("API Configuration")
-api_key = st.sidebar.text_input("Enter your Stability AI API Key", type="password")
+api_key = st.sidebar.text_input("Enter your Stability AI API Key", type="password", key="api_key")
 
 if not api_key:
     st.warning("Please enter your API key to continue.")
@@ -67,10 +68,10 @@ def display_3d_model(response):
         b64_glb = base64.b64encode(glb_data).decode("utf-8")
         st.components.v1.html(
             f"""
-            <model-viewer src="data:model/gltf-binary;base64,{b64_glb}" 
-                          style="width: 100%; height: 600px;" 
-                          autoplay 
-                          camera-controls 
+            <model-viewer src="data:model/gltf-binary;base64,{b64_glb}"
+                          style="width: 100%; height: 600px;"
+                          autoplay
+                          camera-controls
                           ar>
             </model-viewer>
             <script type="module" src="https://unpkg.com/@google/model-viewer/dist/model-viewer.min.js"></script>
@@ -107,15 +108,17 @@ def start_polling(generation_id, result_url, accept_header):
     return None
 
 # Main Tabs
-tab1, tab2, tab3, tab4, tab5, tab6, tab7, tab8 = st.tabs([
+tab_titles = [
     "Text-to-Image", "Image-to-Image", "Image-to-Image Masking",
     "Image Upscaling", "Image Editing", "Image Control",
     "Video Generation", "3D Generation"
-])
+]
+tabs = st.tabs(tab_titles)
 
+# Sidebar - User Account
 with st.sidebar:
     st.header("User Account")
-    if st.button("View Account Details"):
+    if st.button("View Account Details", key="account_details"):
         response = requests.get(
             "https://api.stability.ai/v1/user/account",
             headers=headers,
@@ -126,7 +129,7 @@ with st.sidebar:
         else:
             st.error(f"Error: {response.status_code} - {response.text}")
 
-    if st.button("View Account Balance"):
+    if st.button("View Account Balance", key="account_balance"):
         response = requests.get(
             "https://api.stability.ai/v1/user/balance",
             headers=headers,
@@ -137,27 +140,29 @@ with st.sidebar:
         else:
             st.error(f"Error: {response.status_code} - {response.text}")
 
-with tab1:
+# Text-to-Image Tab
+with tabs[0]:
     st.header("Text-to-Image Generation")
     engines = get_engines()
-    engine_id = st.selectbox("Select Engine", engines)
-    prompt = st.text_area("Prompt")
-    height = st.number_input("Height", value=512, step=64)
-    width = st.number_input("Width", value=512, step=64)
-    cfg_scale = st.slider("CFG Scale", min_value=0.0, max_value=35.0, value=7.0)
+    engine_id = st.selectbox("Select Engine", engines, key="tti_engine")
+    prompt = st.text_area("Prompt", key="tti_prompt")
+    height = st.number_input("Height", value=512, step=64, key="tti_height")
+    width = st.number_input("Width", value=512, step=64, key="tti_width")
+    cfg_scale = st.slider("CFG Scale", min_value=0.0, max_value=35.0, value=7.0, key="tti_cfg_scale")
     sampler = st.selectbox("Sampler", ["DDIM", "DDPM", "K_DPMPP_2M", "K_DPMPP_2S_ANCESTRAL",
                                        "K_DPM_2", "K_DPM_2_ANCESTRAL", "K_EULER", "K_EULER_ANCESTRAL",
-                                       "K_HEUN", "K_LMS"])
-    samples = st.number_input("Samples", min_value=1, max_value=10, value=1)
-    steps = st.number_input("Steps", min_value=10, max_value=50, value=30)
-    seed = st.number_input("Seed (0 for random)", min_value=0, max_value=4294967295, value=0)
+                                       "K_HEUN", "K_LMS"], key="tti_sampler")
+    samples = st.number_input("Samples", min_value=1, max_value=10, value=1, key="tti_samples")
+    steps = st.number_input("Steps", min_value=10, max_value=50, value=30, key="tti_steps")
+    seed = st.number_input("Seed (0 for random)", min_value=0, max_value=4294967295, value=0, key="tti_seed")
     style_preset = st.selectbox(
         "Style Preset",
         ["None", "3d-model", "analog-film", "anime", "cinematic", "comic-book", "digital-art", "enhance",
          "fantasy-art", "isometric", "line-art", "low-poly", "modeling-compound", "neon-punk", "origami",
-         "photographic", "pixel-art", "tile-texture"]
+         "photographic", "pixel-art", "tile-texture"],
+        key="tti_style_preset"
     )
-    generate_button = st.button("Generate Image")
+    generate_button = st.button("Generate Image", key="tti_generate")
 
     if generate_button:
         json_body = {
@@ -182,30 +187,32 @@ with tab1:
         )
         display_image(response)
 
-with tab2:
+# Image-to-Image Tab
+with tabs[1]:
     st.header("Image-to-Image Generation with Prompt")
     engines = get_engines()
-    engine_id = st.selectbox("Select Engine", engines)
-    init_image_file = st.file_uploader("Upload Initial Image", type=["png", "jpg", "jpeg", "webp"])
+    engine_id = st.selectbox("Select Engine", engines, key="iti_engine")
+    init_image_file = st.file_uploader("Upload Initial Image", type=["png", "jpg", "jpeg", "webp"], key="iti_init_image")
     if init_image_file:
         init_image = Image.open(init_image_file)
         st.image(init_image, caption="Initial Image")
-    prompt = st.text_area("Prompt")
-    image_strength = st.slider("Image Strength", min_value=0.0, max_value=1.0, value=0.35)
-    cfg_scale = st.slider("CFG Scale", min_value=0.0, max_value=35.0, value=7.0)
+    prompt = st.text_area("Prompt", key="iti_prompt")
+    image_strength = st.slider("Image Strength", min_value=0.0, max_value=1.0, value=0.35, key="iti_image_strength")
+    cfg_scale = st.slider("CFG Scale", min_value=0.0, max_value=35.0, value=7.0, key="iti_cfg_scale")
     sampler = st.selectbox("Sampler", ["DDIM", "DDPM", "K_DPMPP_2M", "K_DPMPP_2S_ANCESTRAL",
                                        "K_DPM_2", "K_DPM_2_ANCESTRAL", "K_EULER", "K_EULER_ANCESTRAL",
-                                       "K_HEUN", "K_LMS"])
-    samples = st.number_input("Samples", min_value=1, max_value=10, value=1)
-    steps = st.number_input("Steps", min_value=10, max_value=50, value=30)
-    seed = st.number_input("Seed (0 for random)", min_value=0, max_value=4294967295, value=0)
+                                       "K_HEUN", "K_LMS"], key="iti_sampler")
+    samples = st.number_input("Samples", min_value=1, max_value=10, value=1, key="iti_samples")
+    steps = st.number_input("Steps", min_value=10, max_value=50, value=30, key="iti_steps")
+    seed = st.number_input("Seed (0 for random)", min_value=0, max_value=4294967295, value=0, key="iti_seed")
     style_preset = st.selectbox(
         "Style Preset",
         ["None", "3d-model", "analog-film", "anime", "cinematic", "comic-book", "digital-art", "enhance",
          "fantasy-art", "isometric", "line-art", "low-poly", "modeling-compound", "neon-punk", "origami",
-         "photographic", "pixel-art", "tile-texture"]
+         "photographic", "pixel-art", "tile-texture"],
+        key="iti_style_preset"
     )
-    generate_button = st.button("Generate Image")
+    generate_button = st.button("Generate Image", key="iti_generate")
 
     if generate_button and init_image_file:
         files = {
@@ -233,34 +240,36 @@ with tab2:
         )
         display_image(response)
 
-with tab3:
+# Image-to-Image Masking Tab
+with tabs[2]:
     st.header("Image-to-Image Generation with Mask")
     engines = get_engines()
-    engine_id = st.selectbox("Select Engine", engines)
-    init_image_file = st.file_uploader("Upload Initial Image", type=["png", "jpg", "jpeg", "webp"])
-    mask_image_file = st.file_uploader("Upload Mask Image", type=["png", "jpg", "jpeg", "webp"])
+    engine_id = st.selectbox("Select Engine", engines, key="mask_engine")
+    init_image_file = st.file_uploader("Upload Initial Image", type=["png", "jpg", "jpeg", "webp"], key="mask_init_image")
+    mask_image_file = st.file_uploader("Upload Mask Image", type=["png", "jpg", "jpeg", "webp"], key="mask_mask_image")
     if init_image_file:
         init_image = Image.open(init_image_file)
         st.image(init_image, caption="Initial Image")
     if mask_image_file:
         mask_image = Image.open(mask_image_file)
         st.image(mask_image, caption="Mask Image")
-    prompt = st.text_area("Prompt")
-    mask_source = st.selectbox("Mask Source", ["MASK_IMAGE_WHITE", "MASK_IMAGE_BLACK", "INIT_IMAGE_ALPHA"])
-    cfg_scale = st.slider("CFG Scale", min_value=0.0, max_value=35.0, value=7.0)
+    prompt = st.text_area("Prompt", key="mask_prompt")
+    mask_source = st.selectbox("Mask Source", ["MASK_IMAGE_WHITE", "MASK_IMAGE_BLACK", "INIT_IMAGE_ALPHA"], key="mask_source")
+    cfg_scale = st.slider("CFG Scale", min_value=0.0, max_value=35.0, value=7.0, key="mask_cfg_scale")
     sampler = st.selectbox("Sampler", ["DDIM", "DDPM", "K_DPMPP_2M", "K_DPMPP_2S_ANCESTRAL",
                                        "K_DPM_2", "K_DPM_2_ANCESTRAL", "K_EULER", "K_EULER_ANCESTRAL",
-                                       "K_HEUN", "K_LMS"])
-    samples = st.number_input("Samples", min_value=1, max_value=10, value=1)
-    steps = st.number_input("Steps", min_value=10, max_value=50, value=30)
-    seed = st.number_input("Seed (0 for random)", min_value=0, max_value=4294967295, value=0)
+                                       "K_HEUN", "K_LMS"], key="mask_sampler")
+    samples = st.number_input("Samples", min_value=1, max_value=10, value=1, key="mask_samples")
+    steps = st.number_input("Steps", min_value=10, max_value=50, value=30, key="mask_steps")
+    seed = st.number_input("Seed (0 for random)", min_value=0, max_value=4294967295, value=0, key="mask_seed")
     style_preset = st.selectbox(
         "Style Preset",
         ["None", "3d-model", "analog-film", "anime", "cinematic", "comic-book", "digital-art", "enhance",
          "fantasy-art", "isometric", "line-art", "low-poly", "modeling-compound", "neon-punk", "origami",
-         "photographic", "pixel-art", "tile-texture"]
+         "photographic", "pixel-art", "tile-texture"],
+        key="mask_style_preset"
     )
-    generate_button = st.button("Generate Image")
+    generate_button = st.button("Generate Image", key="mask_generate")
 
     if generate_button and init_image_file and mask_image_file:
         files = {
@@ -288,17 +297,17 @@ with tab3:
         )
         display_image(response)
 
-with tab4:
+# Image Upscaling Tab
+with tabs[3]:
     st.header("Image Upscaling")
-    upscale_type = st.selectbox("Select Upscaler", ["Fast", "Conservative", "Creative"])
-    image_file = st.file_uploader("Upload Image to Upscale", type=["png", "jpg", "jpeg", "webp"])
+    upscale_type = st.selectbox("Select Upscaler", ["Fast", "Conservative", "Creative"], key="upscale_type")
+    image_file = st.file_uploader("Upload Image to Upscale", type=["png", "jpg", "jpeg", "webp"], key="upscale_image")
     if image_file:
         image = Image.open(image_file)
         st.image(image, caption="Original Image")
-
     if upscale_type == "Fast":
-        output_format = st.selectbox("Output Format", ["png", "jpeg", "webp"])
-        upscale_button = st.button("Upscale Image")
+        output_format = st.selectbox("Output Format", ["png", "jpeg", "webp"], key="fast_output_format")
+        upscale_button = st.button("Upscale Image", key="fast_upscale_button")
         if upscale_button and image_file:
             files = {
                 "image": image_file.getvalue(),
@@ -316,14 +325,13 @@ with tab4:
                 data=data,
             )
             display_image(response)
-
     elif upscale_type == "Conservative":
-        prompt = st.text_area("Prompt")
-        negative_prompt = st.text_area("Negative Prompt")
-        seed = st.number_input("Seed (0 for random)", min_value=0, max_value=4294967294, value=0)
-        creativity = st.slider("Creativity", min_value=0.2, max_value=0.5, value=0.35)
-        output_format = st.selectbox("Output Format", ["png", "jpeg", "webp"])
-        upscale_button = st.button("Upscale Image")
+        prompt = st.text_area("Prompt", key="conservative_prompt")
+        negative_prompt = st.text_area("Negative Prompt", key="conservative_negative_prompt")
+        seed = st.number_input("Seed (0 for random)", min_value=0, max_value=4294967294, value=0, key="conservative_seed")
+        creativity = st.slider("Creativity", min_value=0.2, max_value=0.5, value=0.35, key="conservative_creativity")
+        output_format = st.selectbox("Output Format", ["png", "jpeg", "webp"], key="conservative_output_format")
+        upscale_button = st.button("Upscale Image", key="conservative_upscale_button")
         if upscale_button and image_file:
             files = {
                 "image": image_file.getvalue(),
@@ -345,14 +353,13 @@ with tab4:
                 data=data,
             )
             display_image(response)
-
     elif upscale_type == "Creative":
-        prompt = st.text_area("Prompt")
-        negative_prompt = st.text_area("Negative Prompt")
-        seed = st.number_input("Seed (0 for random)", min_value=0, max_value=4294967294, value=0)
-        creativity = st.slider("Creativity", min_value=0.0, max_value=0.35, value=0.3)
-        output_format = st.selectbox("Output Format", ["png", "jpeg", "webp"])
-        upscale_button = st.button("Start Upscaling")
+        prompt = st.text_area("Prompt", key="creative_prompt")
+        negative_prompt = st.text_area("Negative Prompt", key="creative_negative_prompt")
+        seed = st.number_input("Seed (0 for random)", min_value=0, max_value=4294967294, value=0, key="creative_seed")
+        creativity = st.slider("Creativity", min_value=0.0, max_value=0.35, value=0.3, key="creative_creativity")
+        output_format = st.selectbox("Output Format", ["png", "jpeg", "webp"], key="creative_output_format")
+        upscale_button = st.button("Start Upscaling", key="creative_upscale_button")
         if upscale_button and image_file:
             files = {
                 "image": image_file.getvalue(),
@@ -386,22 +393,23 @@ with tab4:
             else:
                 st.error(f"Error: {response.status_code} - {response.text}")
 
-with tab5:
+# Image Editing Tab
+with tabs[4]:
     st.header("Stable Image Editing")
-    edit_type = st.selectbox("Select Edit Type", ["Inpaint", "Outpaint", "Erase", "Search and Replace", "Search and Recolor", "Remove Background"])
-    image_file = st.file_uploader("Upload Image", type=["png", "jpg", "jpeg", "webp"])
+    edit_type = st.selectbox("Select Edit Type", ["Inpaint", "Outpaint", "Erase", "Search and Replace", "Search and Recolor", "Remove Background"], key="edit_type")
+    image_file = st.file_uploader("Upload Image", type=["png", "jpg", "jpeg", "webp"], key="edit_image")
     if image_file:
         image = Image.open(image_file)
         st.image(image, caption="Original Image")
 
     if edit_type == "Inpaint":
-        prompt = st.text_area("Prompt")
-        negative_prompt = st.text_area("Negative Prompt")
-        mask_file = st.file_uploader("Upload Mask Image", type=["png", "jpg", "jpeg", "webp"])
-        seed = st.number_input("Seed (0 for random)", min_value=0, max_value=4294967294, value=0)
-        grow_mask = st.number_input("Grow Mask (pixels)", min_value=0, max_value=100, value=5)
-        output_format = st.selectbox("Output Format", ["png", "jpeg", "webp"])
-        inpaint_button = st.button("Inpaint")
+        prompt = st.text_area("Prompt", key="inpaint_prompt")
+        negative_prompt = st.text_area("Negative Prompt", key="inpaint_negative_prompt")
+        mask_file = st.file_uploader("Upload Mask Image", type=["png", "jpg", "jpeg", "webp"], key="inpaint_mask")
+        seed = st.number_input("Seed (0 for random)", min_value=0, max_value=4294967294, value=0, key="inpaint_seed")
+        grow_mask = st.number_input("Grow Mask (pixels)", min_value=0, max_value=100, value=5, key="inpaint_grow_mask")
+        output_format = st.selectbox("Output Format", ["png", "jpeg", "webp"], key="inpaint_output_format")
+        inpaint_button = st.button("Inpaint", key="inpaint_button")
 
         if inpaint_button and image_file and mask_file:
             files = {
@@ -427,16 +435,16 @@ with tab5:
             display_image(response)
 
     elif edit_type == "Outpaint":
-        prompt = st.text_area("Prompt")
-        negative_prompt = st.text_area("Negative Prompt")
-        left = st.number_input("Left Expansion (pixels)", min_value=0, max_value=2000, value=0)
-        right = st.number_input("Right Expansion (pixels)", min_value=0, max_value=2000, value=0)
-        up = st.number_input("Up Expansion (pixels)", min_value=0, max_value=2000, value=0)
-        down = st.number_input("Down Expansion (pixels)", min_value=0, max_value=2000, value=0)
-        seed = st.number_input("Seed (0 for random)", min_value=0, max_value=4294967294, value=0)
-        creativity = st.slider("Creativity", min_value=0.0, max_value=1.0, value=0.5)
-        output_format = st.selectbox("Output Format", ["png", "jpeg", "webp"])
-        outpaint_button = st.button("Outpaint")
+        prompt = st.text_area("Prompt", key="outpaint_prompt")
+        negative_prompt = st.text_area("Negative Prompt", key="outpaint_negative_prompt")
+        left = st.number_input("Left Expansion (pixels)", min_value=0, max_value=2000, value=0, key="outpaint_left")
+        right = st.number_input("Right Expansion (pixels)", min_value=0, max_value=2000, value=0, key="outpaint_right")
+        up = st.number_input("Up Expansion (pixels)", min_value=0, max_value=2000, value=0, key="outpaint_up")
+        down = st.number_input("Down Expansion (pixels)", min_value=0, max_value=2000, value=0, key="outpaint_down")
+        seed = st.number_input("Seed (0 for random)", min_value=0, max_value=4294967294, value=0, key="outpaint_seed")
+        creativity = st.slider("Creativity", min_value=0.0, max_value=1.0, value=0.5, key="outpaint_creativity")
+        output_format = st.selectbox("Output Format", ["png", "jpeg", "webp"], key="outpaint_output_format")
+        outpaint_button = st.button("Outpaint", key="outpaint_button")
 
         if outpaint_button and image_file:
             files = {
@@ -465,11 +473,11 @@ with tab5:
             display_image(response)
 
     elif edit_type == "Erase":
-        mask_file = st.file_uploader("Upload Mask Image", type=["png", "jpg", "jpeg", "webp"])
-        grow_mask = st.number_input("Grow Mask (pixels)", min_value=0, max_value=20, value=5)
-        seed = st.number_input("Seed (0 for random)", min_value=0, max_value=4294967294, value=0)
-        output_format = st.selectbox("Output Format", ["png", "jpeg", "webp"])
-        erase_button = st.button("Erase")
+        mask_file = st.file_uploader("Upload Mask Image", type=["png", "jpg", "jpeg", "webp"], key="erase_mask")
+        grow_mask = st.number_input("Grow Mask (pixels)", min_value=0, max_value=20, value=5, key="erase_grow_mask")
+        seed = st.number_input("Seed (0 for random)", min_value=0, max_value=4294967294, value=0, key="erase_seed")
+        output_format = st.selectbox("Output Format", ["png", "jpeg", "webp"], key="erase_output_format")
+        erase_button = st.button("Erase", key="erase_button")
 
         if erase_button and image_file and mask_file:
             files = {
@@ -493,13 +501,13 @@ with tab5:
             display_image(response)
 
     elif edit_type == "Search and Replace":
-        prompt = st.text_area("Prompt")
-        search_prompt = st.text_input("Search Prompt")
-        negative_prompt = st.text_area("Negative Prompt")
-        grow_mask = st.number_input("Grow Mask (pixels)", min_value=0, max_value=20, value=3)
-        seed = st.number_input("Seed (0 for random)", min_value=0, max_value=4294967294, value=0)
-        output_format = st.selectbox("Output Format", ["png", "jpeg", "webp"])
-        replace_button = st.button("Search and Replace")
+        prompt = st.text_area("Prompt", key="search_replace_prompt")
+        search_prompt = st.text_input("Search Prompt", key="search_replace_search_prompt")
+        negative_prompt = st.text_area("Negative Prompt", key="search_replace_negative_prompt")
+        grow_mask = st.number_input("Grow Mask (pixels)", min_value=0, max_value=20, value=3, key="search_replace_grow_mask")
+        seed = st.number_input("Seed (0 for random)", min_value=0, max_value=4294967294, value=0, key="search_replace_seed")
+        output_format = st.selectbox("Output Format", ["png", "jpeg", "webp"], key="search_replace_output_format")
+        replace_button = st.button("Search and Replace", key="search_replace_button")
 
         if replace_button and image_file:
             files = {
@@ -525,13 +533,13 @@ with tab5:
             display_image(response)
 
     elif edit_type == "Search and Recolor":
-        prompt = st.text_area("Prompt")
-        select_prompt = st.text_input("Select Prompt")
-        negative_prompt = st.text_area("Negative Prompt")
-        grow_mask = st.number_input("Grow Mask (pixels)", min_value=0, max_value=20, value=3)
-        seed = st.number_input("Seed (0 for random)", min_value=0, max_value=4294967294, value=0)
-        output_format = st.selectbox("Output Format", ["png", "jpeg", "webp"])
-        recolor_button = st.button("Search and Recolor")
+        prompt = st.text_area("Prompt", key="search_recolor_prompt")
+        select_prompt = st.text_input("Select Prompt", key="search_recolor_select_prompt")
+        negative_prompt = st.text_area("Negative Prompt", key="search_recolor_negative_prompt")
+        grow_mask = st.number_input("Grow Mask (pixels)", min_value=0, max_value=20, value=3, key="search_recolor_grow_mask")
+        seed = st.number_input("Seed (0 for random)", min_value=0, max_value=4294967294, value=0, key="search_recolor_seed")
+        output_format = st.selectbox("Output Format", ["png", "jpeg", "webp"], key="search_recolor_output_format")
+        recolor_button = st.button("Search and Recolor", key="search_recolor_button")
 
         if recolor_button and image_file:
             files = {
@@ -557,8 +565,8 @@ with tab5:
             display_image(response)
 
     elif edit_type == "Remove Background":
-        output_format = st.selectbox("Output Format", ["png", "webp"])
-        remove_bg_button = st.button("Remove Background")
+        output_format = st.selectbox("Output Format", ["png", "webp"], key="remove_bg_output_format")
+        remove_bg_button = st.button("Remove Background", key="remove_bg_button")
 
         if remove_bg_button and image_file:
             files = {
@@ -578,22 +586,23 @@ with tab5:
             )
             display_image(response)
 
-with tab6:
+# Image Control Tab
+with tabs[5]:
     st.header("Image Control")
-    control_type = st.selectbox("Select Control Type", ["Sketch", "Structure", "Style"])
-    image_file = st.file_uploader("Upload Control Image", type=["png", "jpg", "jpeg", "webp"])
+    control_type = st.selectbox("Select Control Type", ["Sketch", "Structure", "Style"], key="control_type")
+    image_file = st.file_uploader("Upload Control Image", type=["png", "jpg", "jpeg", "webp"], key="control_image")
     if image_file:
         image = Image.open(image_file)
         st.image(image, caption="Control Image")
 
-    prompt = st.text_area("Prompt")
-    negative_prompt = st.text_area("Negative Prompt")
-    seed = st.number_input("Seed (0 for random)", min_value=0, max_value=4294967294, value=0)
-    output_format = st.selectbox("Output Format", ["png", "jpeg", "webp"])
+    prompt = st.text_area("Prompt", key="control_prompt")
+    negative_prompt = st.text_area("Negative Prompt", key="control_negative_prompt")
+    seed = st.number_input("Seed (0 for random)", min_value=0, max_value=4294967294, value=0, key="control_seed")
+    output_format = st.selectbox("Output Format", ["png", "jpeg", "webp"], key="control_output_format")
 
     if control_type == "Sketch":
-        control_strength = st.slider("Control Strength", min_value=0.0, max_value=1.0, value=0.7)
-        control_button = st.button("Generate Image")
+        control_strength = st.slider("Control Strength", min_value=0.0, max_value=1.0, value=0.7, key="sketch_control_strength")
+        control_button = st.button("Generate Image", key="sketch_control_button")
 
         if control_button and image_file:
             files = {
@@ -618,8 +627,8 @@ with tab6:
             display_image(response)
 
     elif control_type == "Structure":
-        control_strength = st.slider("Control Strength", min_value=0.0, max_value=1.0, value=0.7)
-        control_button = st.button("Generate Image")
+        control_strength = st.slider("Control Strength", min_value=0.0, max_value=1.0, value=0.7, key="structure_control_strength")
+        control_button = st.button("Generate Image", key="structure_control_button")
 
         if control_button and image_file:
             files = {
@@ -644,9 +653,9 @@ with tab6:
             display_image(response)
 
     elif control_type == "Style":
-        fidelity = st.slider("Fidelity", min_value=0.0, max_value=1.0, value=0.5)
-        aspect_ratio = st.selectbox("Aspect Ratio", ["1:1", "16:9", "21:9", "2:3", "3:2", "4:5", "5:4", "9:16", "9:21"])
-        control_button = st.button("Generate Image")
+        fidelity = st.slider("Fidelity", min_value=0.0, max_value=1.0, value=0.5, key="style_fidelity")
+        aspect_ratio = st.selectbox("Aspect Ratio", ["1:1", "16:9", "21:9", "2:3", "3:2", "4:5", "5:4", "9:16", "9:21"], key="style_aspect_ratio")
+        control_button = st.button("Generate Image", key="style_control_button")
 
         if control_button and image_file:
             files = {
@@ -671,16 +680,17 @@ with tab6:
             )
             display_image(response)
 
-with tab7:
+# Video Generation Tab
+with tabs[6]:
     st.header("Image to Video Generation")
-    image_file = st.file_uploader("Upload Initial Image", type=["png", "jpg", "jpeg"])
+    image_file = st.file_uploader("Upload Initial Image", type=["png", "jpg", "jpeg"], key="video_image")
     if image_file:
         image = Image.open(image_file)
         st.image(image, caption="Initial Image")
-    cfg_scale = st.number_input("CFG Scale", min_value=0.0, max_value=10.0, value=1.8)
-    motion_bucket_id = st.number_input("Motion Bucket ID", min_value=1, max_value=255, value=127)
-    seed = st.number_input("Seed (0 for random)", min_value=0, max_value=4294967294, value=0)
-    video_button = st.button("Generate Video")
+    cfg_scale = st.number_input("CFG Scale", min_value=0.0, max_value=10.0, value=1.8, key="video_cfg_scale")
+    motion_bucket_id = st.number_input("Motion Bucket ID", min_value=1, max_value=255, value=127, key="video_motion_bucket")
+    seed = st.number_input("Seed (0 for random)", min_value=0, max_value=4294967294, value=0, key="video_seed")
+    video_button = st.button("Generate Video", key="video_button")
 
     if video_button and image_file:
         files = {
@@ -713,17 +723,18 @@ with tab7:
         else:
             st.error(f"Error: {response.status_code} - {response.text}")
 
-with tab8:
+# 3D Generation Tab
+with tabs[7]:
     st.header("3D Model Generation")
-    image_file = st.file_uploader("Upload Image for 3D Model", type=["png", "jpg", "jpeg", "webp"])
+    image_file = st.file_uploader("Upload Image for 3D Model", type=["png", "jpg", "jpeg", "webp"], key="3d_image")
     if image_file:
         image = Image.open(image_file)
         st.image(image, caption="Input Image")
-    texture_resolution = st.selectbox("Texture Resolution", [512, 1024, 2048])
-    foreground_ratio = st.slider("Foreground Ratio", min_value=0.1, max_value=1.0, value=0.85)
-    remesh = st.selectbox("Remesh", ["none", "quad", "triangle"])
-    vertex_count = st.number_input("Vertex Count (-1 for default)", min_value=-1, max_value=20000, value=-1)
-    model_button = st.button("Generate 3D Model")
+    texture_resolution = st.selectbox("Texture Resolution", [512, 1024, 2048], key="3d_texture_resolution")
+    foreground_ratio = st.slider("Foreground Ratio", min_value=0.1, max_value=1.0, value=0.85, key="3d_foreground_ratio")
+    remesh = st.selectbox("Remesh", ["none", "quad", "triangle"], key="3d_remesh")
+    vertex_count = st.number_input("Vertex Count (-1 for default)", min_value=-1, max_value=20000, value=-1, key="3d_vertex_count")
+    model_button = st.button("Generate 3D Model", key="3d_model_button")
 
     if model_button and image_file:
         files = {

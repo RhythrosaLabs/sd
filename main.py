@@ -20,6 +20,10 @@ st.set_page_config(
 if not os.path.exists("generated_images"):
     os.makedirs("generated_images")
 
+# Initialize session state for current image
+if 'current_image' not in st.session_state:
+    st.session_state['current_image'] = None
+
 # Custom CSS for styling
 st.markdown(
     """
@@ -121,17 +125,17 @@ def display_image(response, save_prefix="generated_image"):
             data = response.json()
             if 'artifacts' in data:
                 artifacts = data['artifacts']
-                cols = st.columns(len(artifacts))
-                for idx, artifact in enumerate(artifacts):
-                    img_data = base64.b64decode(artifact['base64'])
-                    img = Image.open(BytesIO(img_data))
-                    cols[idx].image(img)
-                    # Save the image
-                    img_filename = f"{save_prefix}_{int(time.time())}_{idx}.png"
-                    img.save(os.path.join("generated_images", img_filename))
+                img_data = base64.b64decode(artifacts[0]['base64'])
+                img = Image.open(BytesIO(img_data))
+                # Update session state
+                st.session_state['current_image'] = img
+                # Save the image
+                img_filename = f"{save_prefix}_{int(time.time())}.png"
+                img.save(os.path.join("generated_images", img_filename))
         else:
             img = Image.open(BytesIO(response.content))
-            st.image(img)
+            # Update session state
+            st.session_state['current_image'] = img
             # Save the image
             img_filename = f"{save_prefix}_{int(time.time())}.png"
             img.save(os.path.join("generated_images", img_filename))
@@ -231,6 +235,7 @@ with tabs[0]:
                 stroke_width=stroke_width,
                 stroke_color=stroke_color,
                 background_color=bg_color,
+                background_image=st.session_state['current_image'] if st.session_state['current_image'] else None,
                 height=512,
                 width=512,
                 drawing_mode="freedraw",
@@ -238,11 +243,14 @@ with tabs[0]:
                 update_streamlit=realtime_update,
             )
             if canvas_result.image_data is not None:
+                # Update the current image with the canvas content
                 init_image = Image.fromarray(canvas_result.image_data.astype('uint8'), 'RGBA')
+                st.session_state['current_image'] = init_image
         else:
             uploaded_image = st.file_uploader("Upload an Image", type=["png", "jpg", "jpeg"])
             if uploaded_image:
                 init_image = Image.open(uploaded_image)
+                st.session_state['current_image'] = init_image
                 st.image(init_image, caption="Uploaded Image", use_column_width=True)
 
     # Generate and Modify Images
@@ -333,9 +341,10 @@ with tabs[0]:
                             data=data,
                         )
                     display_image(response)
+                    st.success("Image generated and loaded into the canvas!")
 
         elif generation_type == "Image-to-Image":
-            if 'init_image' in locals():
+            if st.session_state['current_image'] is not None:
                 image_strength = st.slider("Image Strength", min_value=0.0, max_value=1.0, value=0.5, key="image_strength")
                 generate_button = st.button("Generate Image", key="generate_button")
                 if generate_button:
@@ -348,8 +357,10 @@ with tabs[0]:
                             "strength": image_strength,
                             "mode": "image-to-image",
                         }
+                        buffered = BytesIO()
+                        st.session_state['current_image'].save(buffered, format="PNG")
                         files = {
-                            "image": init_image.convert("RGB").tobytes(),
+                            "image": buffered.getvalue(),
                         }
                         if model_type.startswith("Stable Diffusion"):
                             data["model"] = model_type.lower().replace(" ", "-")
@@ -368,13 +379,14 @@ with tabs[0]:
                             )
                         else:
                             st.error("Image-to-Image is only supported for Stable Diffusion models.")
-                    display_image(response)
+                        display_image(response)
+                        st.success("Image generated and loaded into the canvas!")
             else:
                 st.warning("Please draw or upload an image first.")
 
         elif generation_type == "Image Effects":
             effect_type = st.selectbox("Select Effect", ["Upscale", "Inpaint", "Outpaint", "Erase", "Search and Replace", "Search and Recolor", "Remove Background"], key="effect_type")
-            if 'init_image' in locals():
+            if st.session_state['current_image'] is not None:
                 if effect_type == "Upscale":
                     # Upscaling options
                     upscale_type = st.selectbox("Upscale Type", ["Fast", "Conservative", "Creative"], key="upscale_type")
@@ -382,8 +394,10 @@ with tabs[0]:
                         upscale_button = st.button("Upscale Image", key="upscale_button")
                         if upscale_button:
                             with st.spinner("Upscaling image..."):
+                                buffered = BytesIO()
+                                st.session_state['current_image'].save(buffered, format="PNG")
                                 files = {
-                                    "image": init_image.convert("RGB").tobytes(),
+                                    "image": buffered.getvalue(),
                                 }
                                 data = {
                                     "output_format": output_format,
@@ -397,7 +411,8 @@ with tabs[0]:
                                     files=files,
                                     data=data,
                                 )
-                            display_image(response)
+                                display_image(response)
+                                st.success("Image upscaled and loaded into the canvas!")
                     else:
                         # Full parameter control for Conservative and Creative
                         prompt_upscale = st.text_area("Upscale Prompt", key="upscale_prompt")
@@ -410,8 +425,10 @@ with tabs[0]:
                         upscale_button = st.button("Upscale Image", key="upscale_button")
                         if upscale_button:
                             with st.spinner("Upscaling image..."):
+                                buffered = BytesIO()
+                                st.session_state['current_image'].save(buffered, format="PNG")
                                 files = {
-                                    "image": init_image.convert("RGB").tobytes(),
+                                    "image": buffered.getvalue(),
                                 }
                                 data = {
                                     "prompt": prompt_upscale,
@@ -440,16 +457,20 @@ with tabs[0]:
                                     )
                                     if result_response:
                                         display_image(result_response)
+                                        st.success("Image upscaled and loaded into the canvas!")
                                 else:
                                     display_image(response)
+                                    st.success("Image upscaled and loaded into the canvas!")
                 elif effect_type == "Inpaint":
                     mask_file = st.file_uploader("Upload Mask Image", type=["png", "jpg", "jpeg", "webp"], key="inpaint_mask")
                     grow_mask = st.number_input("Grow Mask (pixels)", min_value=0, max_value=100, value=5, key="grow_mask")
                     inpaint_button = st.button("Inpaint Image", key="inpaint_button")
                     if inpaint_button and mask_file:
                         with st.spinner("Inpainting image..."):
+                            buffered = BytesIO()
+                            st.session_state['current_image'].save(buffered, format="PNG")
                             files = {
-                                "image": init_image.convert("RGB").tobytes(),
+                                "image": buffered.getvalue(),
                                 "mask": mask_file.getvalue(),
                             }
                             data = {
@@ -469,6 +490,7 @@ with tabs[0]:
                                 data=data,
                             )
                         display_image(response)
+                        st.success("Image inpainted and loaded into the canvas!")
                 elif effect_type == "Outpaint":
                     left = st.number_input("Left Expansion (pixels)", min_value=0, max_value=2000, value=0, key="left_expansion")
                     right = st.number_input("Right Expansion (pixels)", min_value=0, max_value=2000, value=0, key="right_expansion")
@@ -478,8 +500,10 @@ with tabs[0]:
                     outpaint_button = st.button("Outpaint Image", key="outpaint_button")
                     if outpaint_button:
                         with st.spinner("Outpainting image..."):
+                            buffered = BytesIO()
+                            st.session_state['current_image'].save(buffered, format="PNG")
                             files = {
-                                "image": init_image.convert("RGB").tobytes(),
+                                "image": buffered.getvalue(),
                             }
                             data = {
                                 "prompt": prompt,
@@ -502,14 +526,17 @@ with tabs[0]:
                                 data=data,
                             )
                         display_image(response)
+                        st.success("Image outpainted and loaded into the canvas!")
                 elif effect_type == "Erase":
                     mask_file = st.file_uploader("Upload Mask Image", type=["png", "jpg", "jpeg", "webp"], key="erase_mask")
                     grow_mask = st.number_input("Grow Mask (pixels)", min_value=0, max_value=20, value=5, key="erase_grow_mask")
                     erase_button = st.button("Erase", key="erase_button")
                     if erase_button and mask_file:
                         with st.spinner("Erasing image..."):
+                            buffered = BytesIO()
+                            st.session_state['current_image'].save(buffered, format="PNG")
                             files = {
-                                "image": init_image.convert("RGB").tobytes(),
+                                "image": buffered.getvalue(),
                                 "mask": mask_file.getvalue(),
                             }
                             data = {
@@ -527,14 +554,17 @@ with tabs[0]:
                                 data=data,
                             )
                         display_image(response)
+                        st.success("Image erased and loaded into the canvas!")
                 elif effect_type == "Search and Replace":
                     search_prompt = st.text_input("Search Prompt", key="search_replace_search_prompt")
                     grow_mask = st.number_input("Grow Mask (pixels)", min_value=0, max_value=20, value=3, key="search_replace_grow_mask")
                     replace_button = st.button("Search and Replace", key="search_replace_button")
                     if replace_button:
                         with st.spinner("Processing image..."):
+                            buffered = BytesIO()
+                            st.session_state['current_image'].save(buffered, format="PNG")
                             files = {
-                                "image": init_image.convert("RGB").tobytes(),
+                                "image": buffered.getvalue(),
                             }
                             data = {
                                 "prompt": prompt,
@@ -554,14 +584,17 @@ with tabs[0]:
                                 data=data,
                             )
                         display_image(response)
+                        st.success("Image processed and loaded into the canvas!")
                 elif effect_type == "Search and Recolor":
                     select_prompt = st.text_input("Select Prompt", key="search_recolor_select_prompt")
                     grow_mask = st.number_input("Grow Mask (pixels)", min_value=0, max_value=20, value=3, key="search_recolor_grow_mask")
                     recolor_button = st.button("Search and Recolor", key="search_recolor_button")
                     if recolor_button:
                         with st.spinner("Processing image..."):
+                            buffered = BytesIO()
+                            st.session_state['current_image'].save(buffered, format="PNG")
                             files = {
-                                "image": init_image.convert("RGB").tobytes(),
+                                "image": buffered.getvalue(),
                             }
                             data = {
                                 "prompt": prompt,
@@ -581,12 +614,15 @@ with tabs[0]:
                                 data=data,
                             )
                         display_image(response)
+                        st.success("Image recolored and loaded into the canvas!")
                 elif effect_type == "Remove Background":
                     remove_bg_button = st.button("Remove Background", key="remove_bg_button")
                     if remove_bg_button:
                         with st.spinner("Removing background..."):
+                            buffered = BytesIO()
+                            st.session_state['current_image'].save(buffered, format="PNG")
                             files = {
-                                "image": init_image.convert("RGB").tobytes(),
+                                "image": buffered.getvalue(),
                             }
                             data = {
                                 "output_format": output_format,
@@ -601,6 +637,7 @@ with tabs[0]:
                                 data=data,
                             )
                         display_image(response)
+                        st.success("Background removed and image loaded into the canvas!")
             else:
                 st.warning("Please draw or upload an image first.")
         else:

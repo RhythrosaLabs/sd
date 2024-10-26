@@ -134,7 +134,7 @@ def display_image(response):
             st.image(img)
     else:
         try:
-            st.error(f"Error: {response.status_code} - {response.json()['message']}")
+            st.error(f"Error: {response.status_code} - {response.json().get('message', response.text)}")
         except:
             st.error(f"Error: {response.status_code} - {response.text}")
 
@@ -144,7 +144,7 @@ def display_video(response):
         st.video(video_bytes)
     else:
         try:
-            st.error(f"Error: {response.status_code} - {response.json()['message']}")
+            st.error(f"Error: {response.status_code} - {response.json().get('message', response.text)}")
         except:
             st.error(f"Error: {response.status_code} - {response.text}")
 
@@ -166,7 +166,7 @@ def display_3d_model(response):
         )
     else:
         try:
-            st.error(f"Error: {response.status_code} - {response.json()['message']}")
+            st.error(f"Error: {response.status_code} - {response.json().get('message', response.text)}")
         except:
             st.error(f"Error: {response.status_code} - {response.text}")
 
@@ -215,6 +215,7 @@ with tabs[0]:
             engines = get_engines()
             engine_id = st.selectbox("Select Engine", engines, key="tti_engine")
             prompt = st.text_area("Prompt", key="tti_prompt", help="Describe the image you want to generate.")
+            negative_prompt = st.text_area("Negative Prompt", key="tti_negative_prompt", help="Describe what you don't want in the image.")
             col1, col2 = st.columns(2)
             with col1:
                 height = st.number_input("Height", value=512, step=64, key="tti_height")
@@ -222,9 +223,9 @@ with tabs[0]:
                 samples = st.number_input("Samples", min_value=1, max_value=4, value=1, key="tti_samples", help="Number of images to generate.")
             with col2:
                 width = st.number_input("Width", value=512, step=64, key="tti_width")
-                steps = st.number_input("Steps", min_value=10, max_value=150, value=50, key="tti_steps", help="Number of diffusion steps.")
+                steps = st.number_input("Steps", min_value=10, max_value=150, value=30, key="tti_steps", help="Number of diffusion steps.")
                 seed = st.number_input("Seed (0 for random)", min_value=0, max_value=4294967295, value=0, key="tti_seed")
-            sampler = st.selectbox("Sampler", ["K_DPMPP_2M", "K_EULER", "K_EULER_ANCESTRAL", "K_HEUN", "K_DPM_2", "K_LMS"], key="tti_sampler")
+            sampler = st.selectbox("Sampler", ["DDIM", "DDPM", "K_DPMPP_2M", "K_DPMPP_2S_ANCESTRAL", "K_DPM_2", "K_DPM_2_ANCESTRAL", "K_EULER", "K_EULER_ANCESTRAL", "K_HEUN", "K_LMS"], key="tti_sampler")
             style_preset = st.selectbox(
                 "Style Preset",
                 ["None", "3D Model", "Analog Film", "Anime", "Cinematic", "Comic Book", "Digital Art", "Enhance",
@@ -247,6 +248,8 @@ with tabs[0]:
                     "steps": steps,
                     "seed": seed,
                 }
+                if negative_prompt:
+                    json_body["text_prompts"].append({"text": negative_prompt, "weight": -1})
                 if style_preset != "None":
                     json_body["style_preset"] = style_preset.lower().replace(" ", "-")
                 response = requests.post(
@@ -270,11 +273,12 @@ with tabs[0]:
                 init_image = Image.open(init_image_file)
                 st.image(init_image, caption="Initial Image", use_column_width=True)
             prompt = st.text_area("Prompt", key="iti_prompt", help="Describe the changes you want to make to the image.")
+            negative_prompt = st.text_area("Negative Prompt", key="iti_negative_prompt", help="Describe what you don't want in the image.")
             image_strength = st.slider("Image Strength", min_value=0.0, max_value=1.0, value=0.35, key="iti_image_strength", help="How much influence the initial image has on the final result.")
             cfg_scale = st.slider("CFG Scale", min_value=0.0, max_value=35.0, value=7.0, key="iti_cfg_scale")
-            steps = st.number_input("Steps", min_value=10, max_value=150, value=50, key="iti_steps")
+            steps = st.number_input("Steps", min_value=10, max_value=150, value=30, key="iti_steps")
             seed = st.number_input("Seed (0 for random)", min_value=0, max_value=4294967295, value=0, key="iti_seed")
-            sampler = st.selectbox("Sampler", ["K_DPMPP_2M", "K_EULER", "K_EULER_ANCESTRAL", "K_HEUN", "K_DPM_2", "K_LMS"], key="iti_sampler")
+            sampler = st.selectbox("Sampler", ["DDIM", "DDPM", "K_DPMPP_2M", "K_DPMPP_2S_ANCESTRAL", "K_DPM_2", "K_DPM_2_ANCESTRAL", "K_EULER", "K_EULER_ANCESTRAL", "K_HEUN", "K_LMS"], key="iti_sampler")
             style_preset = st.selectbox(
                 "Style Preset",
                 ["None", "3D Model", "Analog Film", "Anime", "Cinematic", "Comic Book", "Digital Art", "Enhance",
@@ -299,6 +303,9 @@ with tabs[0]:
                     "seed": seed,
                     "init_image_mode": "IMAGE_STRENGTH",
                 }
+                if negative_prompt:
+                    data["text_prompts[1][text]"] = negative_prompt
+                    data["text_prompts[1][weight]"] = -1
                 if style_preset != "None":
                     data["style_preset"] = style_preset.lower().replace(" ", "-")
                 response = requests.post(
@@ -328,11 +335,12 @@ with tabs[0]:
                     mask_image = Image.open(mask_image_file)
                     st.image(mask_image, caption="Mask Image", use_column_width=True)
             prompt = st.text_area("Prompt", key="mask_prompt", help="Describe the modifications you want to make.")
+            negative_prompt = st.text_area("Negative Prompt", key="mask_negative_prompt", help="Describe what you don't want in the image.")
             mask_source = st.selectbox("Mask Source", ["MASK_IMAGE_WHITE", "MASK_IMAGE_BLACK", "INIT_IMAGE_ALPHA"], key="mask_source", help="Define how the mask is interpreted.")
             cfg_scale = st.slider("CFG Scale", min_value=0.0, max_value=35.0, value=7.0, key="mask_cfg_scale")
-            steps = st.number_input("Steps", min_value=10, max_value=150, value=50, key="mask_steps")
+            steps = st.number_input("Steps", min_value=10, max_value=150, value=30, key="mask_steps")
             seed = st.number_input("Seed (0 for random)", min_value=0, max_value=4294967295, value=0, key="mask_seed")
-            sampler = st.selectbox("Sampler", ["K_DPMPP_2M", "K_EULER", "K_EULER_ANCESTRAL", "K_HEUN", "K_DPM_2", "K_LMS"], key="mask_sampler")
+            sampler = st.selectbox("Sampler", ["DDIM", "DDPM", "K_DPMPP_2M", "K_DPMPP_2S_ANCESTRAL", "K_DPM_2", "K_DPM_2_ANCESTRAL", "K_EULER", "K_EULER_ANCESTRAL", "K_HEUN", "K_LMS"], key="mask_sampler")
             style_preset = st.selectbox(
                 "Style Preset",
                 ["None", "3D Model", "Analog Film", "Anime", "Cinematic", "Comic Book", "Digital Art", "Enhance",
@@ -357,6 +365,9 @@ with tabs[0]:
                     "steps": steps,
                     "seed": seed,
                 }
+                if negative_prompt:
+                    data["text_prompts[1][text]"] = negative_prompt
+                    data["text_prompts[1][weight]"] = -1
                 if style_preset != "None":
                     data["style_preset"] = style_preset.lower().replace(" ", "-")
                 response = requests.post(
@@ -774,47 +785,90 @@ with tabs[0]:
 # 🎞️ Video Generation Tab
 with tabs[1]:
     st.header("🎞️ Video Generation")
-    with st.expander("Video Generation Settings", expanded=True):
-        image_file = st.file_uploader("Upload Initial Image", type=["png", "jpg", "jpeg"], key="video_image")
-        if image_file:
-            image = Image.open(image_file)
-            st.image(image, caption="Initial Image", use_column_width=True)
-        cfg_scale = st.number_input("CFG Scale", min_value=0.0, max_value=10.0, value=1.8, key="video_cfg_scale")
-        motion_bucket_id = st.number_input("Motion Bucket ID", min_value=1, max_value=255, value=127, key="video_motion_bucket")
-        seed = st.number_input("Seed (0 for random)", min_value=0, max_value=4294967294, value=0, key="video_seed")
-    video_button = st.button("Generate Video", key="video_button")
+    video_subtabs = st.tabs(["Text-to-Animation", "Image-to-Video"])
 
-    if video_button and image_file:
-        with st.spinner("Generating video..."):
-            files = {
-                "image": image_file.getvalue(),
-            }
-            data = {
-                "cfg_scale": cfg_scale,
-                "motion_bucket_id": motion_bucket_id,
-                "seed": seed,
-            }
-            response = requests.post(
-                "https://api.stability.ai/v2beta/image-to-video",
-                headers={
-                    "Authorization": f"Bearer {api_key}",
-                },
-                files=files,
-                data=data,
-            )
-        if response.status_code == 200:
-            generation_id = response.json().get("id")
-            st.write(f"Generation ID: {generation_id}")
-            st.write("Fetching video...")
-            result_response = start_polling(
-                generation_id,
-                f"https://api.stability.ai/v2beta/image-to-video/result/{generation_id}",
-                accept_header="video/*"
-            )
-            if result_response:
-                display_video(result_response)
-        else:
-            st.error(f"Error: {response.status_code} - {response.text}")
+    # Text-to-Animation Sub-tab
+    with video_subtabs[0]:
+        st.subheader("📝 Text-to-Animation")
+        with st.expander("Animation Settings", expanded=True):
+            engines = get_engines()
+            engine_id = st.selectbox("Select Engine", engines, key="tta_engine")
+            prompt = st.text_area("Prompt", key="tta_prompt", help="Describe the animation you want to generate.")
+            negative_prompt = st.text_area("Negative Prompt", key="tta_negative_prompt", help="Describe what you don't want in the animation.")
+            cfg_scale = st.number_input("CFG Scale", min_value=0.0, max_value=35.0, value=7.0, key="tta_cfg_scale")
+            steps = st.number_input("Steps", min_value=10, max_value=50, value=30, key="tta_steps")
+            seed = st.number_input("Seed (0 for random)", min_value=0, max_value=4294967295, value=0, key="tta_seed")
+            samples = st.number_input("Samples", min_value=1, max_value=4, value=1, key="tta_samples")
+            sampler = st.selectbox("Sampler", ["DDIM", "DDPM", "K_DPMPP_2M", "K_DPMPP_2S_ANCESTRAL", "K_DPM_2", "K_DPM_2_ANCESTRAL", "K_EULER", "K_EULER_ANCESTRAL", "K_HEUN", "K_LMS"], key="tta_sampler")
+
+        generate_button = st.button("Generate Animation", key="tta_generate")
+
+        if generate_button:
+            with st.spinner("Generating animation..."):
+                json_body = {
+                    "text_prompts": [{"text": prompt}],
+                    "cfg_scale": cfg_scale,
+                    "steps": steps,
+                    "seed": seed,
+                    "samples": samples,
+                    "sampler": sampler,
+                }
+                if negative_prompt:
+                    json_body["text_prompts"].append({"text": negative_prompt, "weight": -1})
+                response = requests.post(
+                    f"https://api.stability.ai/v1/generation/{engine_id}/text-to-image",
+                    headers={
+                        "Authorization": f"Bearer {api_key}",
+                        "Content-Type": "application/json",
+                    },
+                    json=json_body,
+                )
+            display_image(response)
+
+    # Image-to-Video Sub-tab
+    with video_subtabs[1]:
+        st.subheader("🖼️ Image-to-Video")
+        with st.expander("Video Generation Settings", expanded=True):
+            image_file = st.file_uploader("Upload Initial Image", type=["png", "jpg", "jpeg"], key="video_image")
+            if image_file:
+                image = Image.open(image_file)
+                st.image(image, caption="Initial Image", use_column_width=True)
+            cfg_scale = st.number_input("CFG Scale", min_value=0.0, max_value=10.0, value=1.8, key="video_cfg_scale")
+            motion_bucket_id = st.number_input("Motion Bucket ID", min_value=1, max_value=255, value=127, key="video_motion_bucket")
+            seed = st.number_input("Seed (0 for random)", min_value=0, max_value=4294967294, value=0, key="video_seed")
+        video_button = st.button("Generate Video", key="video_button")
+
+        if video_button and image_file:
+            with st.spinner("Generating video..."):
+                files = {
+                    "image": image_file.getvalue(),
+                }
+                data = {
+                    "cfg_scale": cfg_scale,
+                    "motion_bucket_id": motion_bucket_id,
+                    "seed": seed,
+                }
+                response = requests.post(
+                    "https://api.stability.ai/v2beta/image-to-video",
+                    headers={
+                        "Authorization": f"Bearer {api_key}",
+                    },
+                    files=files,
+                    data=data,
+                )
+            if response.status_code == 200:
+                generation_id = response.json().get("id")
+                st.write(f"Generation ID: {generation_id}")
+                st.write("Fetching video...")
+                result_response = start_polling(
+                    generation_id,
+                    f"https://api.stability.ai/v2beta/image-to-video/result/{generation_id}",
+                    accept_header="video/*"
+                )
+                if result_response:
+                    display_video(result_response)
+            else:
+                st.error(f"Error: {response.status_code} - {response.text}")
 
 # 🔷 3D Generation Tab
 with tabs[2]:

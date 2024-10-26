@@ -1,5 +1,3 @@
-# app.py
-
 import streamlit as st
 import requests
 import json
@@ -209,7 +207,7 @@ with tabs[0]:
 
     # Sub-tabs for different functionalities
     image_subtabs = st.tabs(["Text-to-Image", "Image-to-Image", "Image Masking", "Image Upscaling", "Image Editing", "Image Control"])
-    
+
     # Text-to-Image Sub-tab
     with image_subtabs[0]:
         st.subheader("🎨 Text-to-Image Generation")

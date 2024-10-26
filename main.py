@@ -1,7 +1,6 @@
 import streamlit as st
 import requests
-import json
-from PIL import Image
+from PIL import Image, ImageOps
 from io import BytesIO
 import base64
 import time
@@ -48,13 +47,6 @@ st.markdown(
         font-size: 16px;
     }
 
-    /* Tabs styling */
-    .stTabs [role="tab"] {
-        padding: 1rem;
-        font-size: 16px;
-        font-weight: 600;
-    }
-
     /* Sidebar styling */
     [data-testid="stSidebar"] {
         background-color: #6c63ff;
@@ -65,6 +57,20 @@ st.markdown(
     }
     [data-testid="stSidebar"] label {
         color: white;
+    }
+
+    /* Canvas and tools layout */
+    .canvas-container {
+        display: flex;
+        flex-direction: row;
+        justify-content: space-between;
+    }
+    .canvas-column {
+        flex: 3;
+        margin-right: 1rem;
+    }
+    .tools-column {
+        flex: 1;
     }
     </style>
     """,
@@ -208,203 +214,99 @@ def start_polling(generation_id, result_url, accept_header):
     st.error("Generation timed out.")
     return None
 
-# Main Tabs
-tab_titles = [
-    "🖼️ Image Generation & Editing",
-    "🎞️ Video Generation",
-    "🔷 3D Generation",
-    "📁 File Management",
-]
-tabs = st.tabs(tab_titles)
+# Main Interface
+st.title("🖌️ Stability AI Image Editor")
 
-# 🖼️ Image Generation & Editing Tab
-with tabs[0]:
-    st.header("🖼️ Image Generation & Editing")
-    image_subtabs = st.tabs(["📝 Text-to-Image", "🖼️ Image-to-Image", "✨ Image Effects", "🎨 Canvas"])
+# Top section with prompt and upload button
+st.markdown("## Enter your prompt and upload an image (optional)")
+col1, col2 = st.columns([3, 1])
 
-    # 🎨 Canvas Subtab
-    with image_subtabs[3]:
-        st.subheader("🎨 Interactive Canvas")
-        canvas_mode = st.selectbox("Canvas Mode", ["Draw", "Upload Image"], key="canvas_mode")
-        if canvas_mode == "Draw":
-            stroke_width = st.slider("Stroke Width", 1, 25, 3)
-            stroke_color = st.color_picker("Stroke Color", "#000000")
-            bg_color = st.color_picker("Background Color", "#FFFFFF")
-            realtime_update = st.checkbox("Update in Real Time", True)
-            canvas_result = st_canvas(
-                fill_color="rgba(0, 0, 0, 0)",  # Transparent fill
-                stroke_width=stroke_width,
-                stroke_color=stroke_color,
-                background_color=bg_color,
-                background_image=st.session_state['current_image'] if st.session_state['current_image'] else None,
-                height=512,
-                width=512,
-                drawing_mode="freedraw",
-                key="canvas",
-                update_streamlit=realtime_update,
-            )
-            if canvas_result.image_data is not None:
-                # Update the current image with the canvas content
-                init_image = Image.fromarray(canvas_result.image_data.astype('uint8'), 'RGBA')
-                st.session_state['current_image'] = init_image
+with col1:
+    prompt = st.text_area("Prompt", key="prompt_main", help="Describe the image you want to generate.")
+    negative_prompt = st.text_area("Negative Prompt", key="negative_prompt_main", help="Describe what you don't want in the image.")
+    generate_button = st.button("Generate Image", key="generate_button_main")
+with col2:
+    uploaded_image = st.file_uploader("Upload Image", type=["png", "jpg", "jpeg", "webp"], key="uploaded_image_main")
+    if uploaded_image:
+        init_image = Image.open(uploaded_image)
+        st.session_state['current_image'] = init_image
+
+if generate_button:
+    with st.spinner("Generating image..."):
+        data = {
+            "prompt": prompt,
+            "negative_prompt": negative_prompt,
+            "seed": 0,
+            "output_format": "png",
+            "model": "stable-diffusion-3.5-large",
+            "steps": 50,
+            "sampler": "K_EULER",
+            "cfg_scale": 7.0,
+            "samples": 1,
+        }
+        if st.session_state['current_image']:
+            data["strength"] = 0.5
+            data["mode"] = "image-to-image"
+            buffered = BytesIO()
+            st.session_state['current_image'].save(buffered, format="PNG")
+            files = {
+                "image": buffered.getvalue(),
+            }
         else:
-            uploaded_image = st.file_uploader("Upload an Image", type=["png", "jpg", "jpeg"])
-            if uploaded_image:
-                init_image = Image.open(uploaded_image)
-                st.session_state['current_image'] = init_image
-                st.image(init_image, caption="Uploaded Image", use_column_width=True)
+            files = {"none": ""}
+        response = requests.post(
+            "https://api.stability.ai/v2beta/stable-image/generate",
+            headers={
+                "Authorization": f"Bearer {api_key}",
+                "Accept": "application/json",
+            },
+            files=files,
+            data=data,
+        )
+    display_image(response)
+    st.success("Image generated and loaded into the canvas!")
 
-    # 📝 Text-to-Image Subtab
-    with image_subtabs[0]:
-        st.subheader("📝 Text-to-Image Generation")
-        with st.expander("Generation Settings", expanded=True):
-            model_type = st.selectbox("Select Model", [
-                "Stable Image Ultra", "Stable Image Core",
-                "Stable Diffusion 3.5 Large", "Stable Diffusion 3.5 Large Turbo",
-                "Stable Diffusion 3.0 Large", "Stable Diffusion 3.0 Large Turbo", "Stable Diffusion 3.0 Medium"
-            ], key="model_type_tti")
+# Main canvas and tools
+st.markdown("---")
+st.markdown("## Edit your image")
+canvas_col, tools_col = st.columns([3, 1])
 
-            # Common parameters
-            prompt = st.text_area("Prompt", key="prompt_tti", help="Describe the image you want to generate.")
-            negative_prompt = st.text_area("Negative Prompt", key="negative_prompt_tti", help="Describe what you don't want in the image.")
-            aspect_ratio = st.selectbox("Aspect Ratio", ["1:1", "16:9", "21:9", "2:3", "3:2", "4:5", "5:4", "9:16", "9:21"], key="aspect_ratio_tti")
-            seed = st.number_input("Seed (0 for random)", min_value=0, max_value=4294967294, value=0, key="seed_tti")
-            output_format = st.selectbox("Output Format", ["png", "jpeg", "webp"], key="output_format_tti")
-
-            # Full parameter control
-            if model_type in ["Stable Image Ultra", "Stable Image Core"]:
-                # Specific parameters for Ultra and Core
-                if model_type == "Stable Image Ultra":
-                    cfg_scale = st.slider("CFG Scale", min_value=0.0, max_value=35.0, value=7.0, key="cfg_scale_tti")
-                else:
-                    style_preset = st.selectbox(
-                        "Style Preset",
-                        ["None", "3d-model", "analog-film", "anime", "cinematic", "comic-book", "digital-art", "enhance",
-                         "fantasy-art", "isometric", "line-art", "low-poly", "modeling-compound", "neon-punk", "origami",
-                         "photographic", "pixel-art", "tile-texture"],
-                        key="style_preset_tti"
-                    )
-            else:
-                # Parameters for Stable Diffusion models
-                steps = st.number_input("Steps", min_value=1, max_value=150, value=50, key="steps_tti")
-                sampler = st.selectbox("Sampler", ["DDIM", "DDPM", "K_DPMPP_2M", "K_DPMPP_2S_ANCESTRAL", "K_DPM_2", "K_DPM_2_ANCESTRAL", "K_EULER", "K_EULER_ANCESTRAL", "K_HEUN", "K_LMS"], key="sampler_tti")
-                cfg_scale = st.slider("CFG Scale", min_value=0.0, max_value=35.0, value=7.0, key="cfg_scale_tti")
-                samples = st.number_input("Samples", min_value=1, max_value=10, value=1, key="samples_tti")
-
-            generate_button = st.button("Generate Image", key="generate_button_tti")
-            if generate_button:
-                with st.spinner("Generating image..."):
-                    data = {
-                        "prompt": prompt,
-                        "negative_prompt": negative_prompt,
-                        "aspect_ratio": aspect_ratio,
-                        "seed": seed,
-                        "output_format": output_format,
-                    }
-                    if model_type == "Stable Image Ultra":
-                        data["cfg_scale"] = cfg_scale
-                        response = requests.post(
-                            "https://api.stability.ai/v2beta/stable-image/generate/ultra",
-                            headers={
-                                "Authorization": f"Bearer {api_key}",
-                                "Accept": "image/*",
-                            },
-                            files={"none": ""},
-                            data=data,
-                        )
-                    elif model_type == "Stable Image Core":
-                        if style_preset != "None":
-                            data["style_preset"] = style_preset
-                        response = requests.post(
-                            "https://api.stability.ai/v2beta/stable-image/generate/core",
-                            headers={
-                                "Authorization": f"Bearer {api_key}",
-                                "Accept": "image/*",
-                            },
-                            files={"none": ""},
-                            data=data,
-                        )
-                    else:
-                        # Stable Diffusion 3.0 & 3.5
-                        data["model"] = model_type.lower().replace(" ", "-")
-                        data["steps"] = steps
-                        data["sampler"] = sampler
-                        data["cfg_scale"] = cfg_scale
-                        data["samples"] = samples
-                        response = requests.post(
-                            "https://api.stability.ai/v2beta/stable-image/generate",
-                            headers={
-                                "Authorization": f"Bearer {api_key}",
-                                "Accept": "application/json",
-                            },
-                            files={"none": ""},
-                            data=data,
-                        )
-                    display_image(response)
-                    st.success("Image generated and loaded into the canvas!")
-
-    # 🖼️ Image-to-Image Subtab
-    with image_subtabs[1]:
-        st.subheader("🖼️ Image-to-Image Generation")
-        if st.session_state['current_image'] is not None:
+with canvas_col:
+    st.subheader("🖼️ Canvas")
+    canvas_mode = st.selectbox("Canvas Mode", ["Draw", "Modify"], key="canvas_mode")
+    if canvas_mode == "Draw":
+        stroke_width = st.slider("Stroke Width", 1, 25, 3)
+        stroke_color = st.color_picker("Stroke Color", "#000000")
+        bg_color = st.color_picker("Background Color", "#FFFFFF")
+        realtime_update = st.checkbox("Update in Real Time", True)
+        canvas_result = st_canvas(
+            fill_color="rgba(0, 0, 0, 0)",  # Transparent fill
+            stroke_width=stroke_width,
+            stroke_color=stroke_color,
+            background_color=bg_color,
+            background_image=st.session_state['current_image'].convert("RGBA") if st.session_state['current_image'] else None,
+            height=512,
+            width=512,
+            drawing_mode="freedraw",
+            key="canvas",
+            update_streamlit=realtime_update,
+        )
+        if canvas_result.image_data is not None:
+            # Update the current image with the canvas content
+            init_image = Image.fromarray(canvas_result.image_data.astype('uint8'), 'RGBA')
+            st.session_state['current_image'] = init_image
+    else:
+        if st.session_state['current_image']:
             st.image(st.session_state['current_image'], caption="Current Image", use_column_width=True)
-            with st.expander("Generation Settings", expanded=True):
-                model_type = st.selectbox("Select Model", [
-                    "Stable Diffusion 3.5 Large", "Stable Diffusion 3.5 Large Turbo",
-                    "Stable Diffusion 3.0 Large", "Stable Diffusion 3.0 Large Turbo", "Stable Diffusion 3.0 Medium"
-                ], key="model_type_iti")
-
-                prompt = st.text_area("Prompt", key="prompt_iti", help="Describe the image you want to generate.")
-                negative_prompt = st.text_area("Negative Prompt", key="negative_prompt_iti", help="Describe what you don't want in the image.")
-                image_strength = st.slider("Image Strength", min_value=0.0, max_value=1.0, value=0.5, key="image_strength_iti")
-                seed = st.number_input("Seed (0 for random)", min_value=0, max_value=4294967294, value=0, key="seed_iti")
-                output_format = st.selectbox("Output Format", ["png", "jpeg", "webp"], key="output_format_iti")
-                steps = st.number_input("Steps", min_value=1, max_value=150, value=50, key="steps_iti")
-                sampler = st.selectbox("Sampler", ["DDIM", "DDPM", "K_DPMPP_2M", "K_DPMPP_2S_ANCESTRAL", "K_DPM_2", "K_DPM_2_ANCESTRAL", "K_EULER", "K_EULER_ANCESTRAL", "K_HEUN", "K_LMS"], key="sampler_iti")
-                cfg_scale = st.slider("CFG Scale", min_value=0.0, max_value=35.0, value=7.0, key="cfg_scale_iti")
-                samples = st.number_input("Samples", min_value=1, max_value=10, value=1, key="samples_iti")
-
-            generate_button = st.button("Generate Image", key="generate_button_iti")
-            if generate_button:
-                with st.spinner("Generating image..."):
-                    data = {
-                        "prompt": prompt,
-                        "negative_prompt": negative_prompt,
-                        "seed": seed,
-                        "output_format": output_format,
-                        "strength": image_strength,
-                        "mode": "image-to-image",
-                        "model": model_type.lower().replace(" ", "-"),
-                        "steps": steps,
-                        "sampler": sampler,
-                        "cfg_scale": cfg_scale,
-                        "samples": samples,
-                    }
-                    buffered = BytesIO()
-                    st.session_state['current_image'].save(buffered, format="PNG")
-                    files = {
-                        "image": buffered.getvalue(),
-                    }
-                    response = requests.post(
-                        "https://api.stability.ai/v2beta/stable-image/generate",
-                        headers={
-                            "Authorization": f"Bearer {api_key}",
-                            "Accept": "application/json",
-                        },
-                        files=files,
-                        data=data,
-                    )
-                    display_image(response)
-                    st.success("Image generated and loaded into the canvas!")
         else:
-            st.warning("Please use the Canvas to draw or upload an image first.")
+            st.warning("Please draw or upload an image first.")
 
-    # ✨ Image Effects Subtab
-    with image_subtabs[2]:
-        st.subheader("✨ Image Effects")
+with tools_col:
+    st.subheader("🛠️ Tools")
+    tool = st.selectbox("Select Tool", ["Image Effects", "Image-to-Image", "Image-to-Video"])
+    if tool == "Image Effects":
+        effect_type = st.selectbox("Select Effect", ["Upscale", "Inpaint", "Outpaint", "Erase", "Search and Replace", "Search and Recolor", "Remove Background"], key="effect_type")
         if st.session_state['current_image'] is not None:
-            st.image(st.session_state['current_image'], caption="Current Image", use_column_width=True)
-            effect_type = st.selectbox("Select Effect", ["Upscale", "Inpaint", "Outpaint", "Erase", "Search and Replace", "Search and Recolor", "Remove Background"], key="effect_type")
             if effect_type == "Upscale":
                 upscale_type = st.selectbox("Upscale Type", ["Fast", "Conservative", "Creative"], key="upscale_type")
                 if upscale_type == "Fast":
@@ -432,14 +334,10 @@ with tabs[0]:
                             display_image(response)
                             st.success("Image upscaled and loaded into the canvas!")
                 else:
-                    # Full parameter control for Conservative and Creative
                     prompt_upscale = st.text_area("Upscale Prompt", key="upscale_prompt")
                     negative_prompt_upscale = st.text_area("Upscale Negative Prompt", key="upscale_negative_prompt")
                     seed_upscale = st.number_input("Upscale Seed (0 for random)", min_value=0, max_value=4294967294, value=0, key="upscale_seed")
-                    if upscale_type == "Conservative":
-                        creativity = st.slider("Creativity", min_value=0.2, max_value=0.5, value=0.35, key="creativity")
-                    else:
-                        creativity = st.slider("Creativity", min_value=0.0, max_value=0.35, value=0.3, key="creativity")
+                    creativity = st.slider("Creativity", min_value=0.0, max_value=0.5, value=0.3, key="creativity_upscale")
                     output_format = st.selectbox("Output Format", ["png", "jpeg", "webp"], key="output_format_upscale")
                     upscale_button = st.button("Upscale Image", key="upscale_button")
                     if upscale_button:
@@ -677,136 +575,151 @@ with tabs[0]:
                     display_image(response)
                     st.success("Background removed and image loaded into the canvas!")
         else:
-            st.warning("Please use the Canvas to draw or upload an image first.")
-
-# 🎞️ Video Generation Tab
-with tabs[1]:
-    st.header("🎞️ Video Generation")
-    st.subheader("🖼️ Image-to-Video")
-    with st.expander("Video Generation Settings", expanded=True):
-        image_file = st.file_uploader("Upload Initial Image", type=["png", "jpg", "jpeg"], key="video_image")
-        if image_file:
-            image = Image.open(image_file)
-            st.image(image, caption="Initial Image", use_column_width=True)
-        cfg_scale = st.number_input("CFG Scale", min_value=0.0, max_value=10.0, value=1.8, key="video_cfg_scale")
-        motion_bucket_id = st.number_input("Motion Bucket ID", min_value=1, max_value=255, value=127, key="video_motion_bucket")
-        seed = st.number_input("Seed (0 for random)", min_value=0, max_value=4294967294, value=0, key="video_seed")
-    video_button = st.button("Generate Video", key="video_button")
-
-    if video_button and image_file:
-        with st.spinner("Generating video..."):
-            files = {
-                "image": image_file.getvalue(),
-            }
-            data = {
-                "cfg_scale": cfg_scale,
-                "motion_bucket_id": motion_bucket_id,
-                "seed": seed,
-            }
-            response = requests.post(
-                "https://api.stability.ai/v2beta/image-to-video",
-                headers={
-                    "Authorization": f"Bearer {api_key}",
-                },
-                files=files,
-                data=data,
-            )
-        if response.status_code == 200:
-            generation_id = response.json().get("id")
-            st.write(f"Generation ID: {generation_id}")
-            st.write("Fetching video...")
-            result_response = start_polling(
-                generation_id,
-                f"https://api.stability.ai/v2beta/image-to-video/result/{generation_id}",
-                accept_header="video/*"
-            )
-            if result_response:
-                display_video(result_response)
+            st.warning("Please draw or upload an image first.")
+    elif tool == "Image-to-Image":
+        if st.session_state['current_image'] is not None:
+            st.subheader("🖼️ Image-to-Image Generation")
+            model_type = st.selectbox("Select Model", [
+                "Stable Diffusion 3.5 Large", "Stable Diffusion 3.5 Large Turbo",
+                "Stable Diffusion 3.0 Large", "Stable Diffusion 3.0 Large Turbo", "Stable Diffusion 3.0 Medium"
+            ], key="model_type_iti")
+            prompt = st.text_area("Prompt", key="prompt_iti", help="Describe the image you want to generate.")
+            negative_prompt = st.text_area("Negative Prompt", key="negative_prompt_iti", help="Describe what you don't want in the image.")
+            image_strength = st.slider("Image Strength", min_value=0.0, max_value=1.0, value=0.5, key="image_strength_iti")
+            seed = st.number_input("Seed (0 for random)", min_value=0, max_value=4294967294, value=0, key="seed_iti")
+            output_format = st.selectbox("Output Format", ["png", "jpeg", "webp"], key="output_format_iti")
+            steps = st.number_input("Steps", min_value=1, max_value=150, value=50, key="steps_iti")
+            sampler = st.selectbox("Sampler", ["DDIM", "DDPM", "K_DPMPP_2M", "K_DPMPP_2S_ANCESTRAL", "K_DPM_2", "K_DPM_2_ANCESTRAL", "K_EULER", "K_EULER_ANCESTRAL", "K_HEUN", "K_LMS"], key="sampler_iti")
+            cfg_scale = st.slider("CFG Scale", min_value=0.0, max_value=35.0, value=7.0, key="cfg_scale_iti")
+            samples = st.number_input("Samples", min_value=1, max_value=10, value=1, key="samples_iti")
+            generate_button = st.button("Generate Image", key="generate_button_iti")
+            if generate_button:
+                with st.spinner("Generating image..."):
+                    data = {
+                        "prompt": prompt,
+                        "negative_prompt": negative_prompt,
+                        "seed": seed,
+                        "output_format": output_format,
+                        "strength": image_strength,
+                        "mode": "image-to-image",
+                        "model": model_type.lower().replace(" ", "-"),
+                        "steps": steps,
+                        "sampler": sampler,
+                        "cfg_scale": cfg_scale,
+                        "samples": samples,
+                    }
+                    buffered = BytesIO()
+                    st.session_state['current_image'].save(buffered, format="PNG")
+                    files = {
+                        "image": buffered.getvalue(),
+                    }
+                    response = requests.post(
+                        "https://api.stability.ai/v2beta/stable-image/generate",
+                        headers={
+                            "Authorization": f"Bearer {api_key}",
+                            "Accept": "application/json",
+                        },
+                        files=files,
+                        data=data,
+                    )
+                    display_image(response)
+                    st.success("Image generated and loaded into the canvas!")
         else:
-            st.error(f"Error: {response.status_code} - {response.text}")
-
-# 🔷 3D Generation Tab
-with tabs[2]:
-    st.header("🔷 3D Model Generation")
-    with st.expander("3D Model Generation Settings", expanded=True):
-        image_file = st.file_uploader("Upload Image for 3D Model", type=["png", "jpg", "jpeg", "webp"], key="3d_image")
+            st.warning("Please draw or upload an image first.")
+    elif tool == "Image-to-Video":
+        st.subheader("🎞️ Image-to-Video")
+        image_file = st.file_uploader("Upload Image for Video", type=["png", "jpg", "jpeg"], key="video_image")
         if image_file:
             image = Image.open(image_file)
-            st.image(image, caption="Input Image", use_column_width=True)
-        texture_resolution = st.selectbox("Texture Resolution", [512, 1024, 2048], key="3d_texture_resolution")
-        foreground_ratio = st.slider("Foreground Ratio", min_value=0.1, max_value=1.0, value=0.85, key="3d_foreground_ratio")
-        remesh = st.selectbox("Remesh", ["none", "quad", "triangle"], key="3d_remesh")
-        vertex_count = st.number_input("Vertex Count (-1 for default)", min_value=-1, max_value=20000, value=-1, key="3d_vertex_count")
-    model_button = st.button("Generate 3D Model", key="3d_model_button")
-
-    if model_button and image_file:
-        with st.spinner("Generating 3D model..."):
+            # Resize image to 768x768
+            image = image.resize((768, 768))
+            st.image(image, caption="Input Image (Resized to 768x768)", use_column_width=True)
+            buffered = BytesIO()
+            image.save(buffered, format="PNG")
             files = {
-                "image": image_file.getvalue(),
+                "image": buffered.getvalue(),
             }
-            data = {
-                "texture_resolution": texture_resolution,
-                "foreground_ratio": foreground_ratio,
-                "remesh": remesh,
-                "vertex_count": vertex_count,
-            }
-            response = requests.post(
-                "https://api.stability.ai/v2beta/3d/stable-fast-3d",
-                headers={
-                    "Authorization": f"Bearer {api_key}",
-                },
-                files=files,
-                data=data,
-            )
-        display_3d_model(response)
+            cfg_scale = st.number_input("CFG Scale", min_value=0.0, max_value=10.0, value=1.8, key="video_cfg_scale")
+            motion_bucket_id = st.number_input("Motion Bucket ID", min_value=1, max_value=255, value=127, key="video_motion_bucket")
+            seed = st.number_input("Seed (0 for random)", min_value=0, max_value=4294967294, value=0, key="video_seed")
+            video_button = st.button("Generate Video", key="video_button")
+            if video_button:
+                with st.spinner("Generating video..."):
+                    data = {
+                        "cfg_scale": cfg_scale,
+                        "motion_bucket_id": motion_bucket_id,
+                        "seed": seed,
+                    }
+                    response = requests.post(
+                        "https://api.stability.ai/v2beta/image-to-video",
+                        headers={
+                            "Authorization": f"Bearer {api_key}",
+                        },
+                        files=files,
+                        data=data,
+                    )
+                if response.status_code == 200:
+                    generation_id = response.json().get("id")
+                    st.write(f"Generation ID: {generation_id}")
+                    st.write("Fetching video...")
+                    result_response = start_polling(
+                        generation_id,
+                        f"https://api.stability.ai/v2beta/image-to-video/result/{generation_id}",
+                        accept_header="video/*"
+                    )
+                    if result_response:
+                        display_video(result_response)
+                else:
+                    st.error(f"Error: {response.status_code} - {response.text}")
+        else:
+            st.warning("Please upload an image for video generation.")
 
-# 📁 File Management Tab
-with tabs[3]:
-    st.header("📁 File Management")
-    st.subheader("Your Generated Files")
+# Footer with file management
+st.markdown("---")
+st.header("📁 Your Generated Files")
 
-    # List all files in the 'generated_images' directory
-    files = os.listdir("generated_images")
-    images = [file for file in files if file.endswith(('.png', '.jpg', '.jpeg', '.webp'))]
-    videos = [file for file in files if file.endswith('.mp4')]
-    models = [file for file in files if file.endswith('.glb')]
+# List all files in the 'generated_images' directory
+files = os.listdir("generated_images")
+images = [file for file in files if file.endswith(('.png', '.jpg', '.jpeg', '.webp'))]
+videos = [file for file in files if file.endswith('.mp4')]
+models = [file for file in files if file.endswith('.glb')]
 
-    if images:
-        st.subheader("Images")
-        cols = st.columns(4)
-        for idx, img_file in enumerate(images):
-            img_path = os.path.join("generated_images", img_file)
-            img = Image.open(img_path)
-            cols[idx % 4].image(img, caption=img_file)
-    else:
-        st.write("No images found.")
+if images:
+    st.subheader("Images")
+    cols = st.columns(4)
+    for idx, img_file in enumerate(images):
+        img_path = os.path.join("generated_images", img_file)
+        img = Image.open(img_path)
+        cols[idx % 4].image(img, caption=img_file)
+else:
+    st.write("No images found.")
 
-    if videos:
-        st.subheader("Videos")
-        for video_file in videos:
-            video_path = os.path.join("generated_images", video_file)
-            video_bytes = open(video_path, 'rb').read()
-            st.video(video_bytes)
-    else:
-        st.write("No videos found.")
+if videos:
+    st.subheader("Videos")
+    for video_file in videos:
+        video_path = os.path.join("generated_images", video_file)
+        video_bytes = open(video_path, 'rb').read()
+        st.video(video_bytes)
+else:
+    st.write("No videos found.")
 
-    if models:
-        st.subheader("3D Models")
-        for model_file in models:
-            model_path = os.path.join("generated_images", model_file)
-            glb_data = open(model_path, 'rb').read()
-            b64_glb = base64.b64encode(glb_data).decode("utf-8")
-            st.components.v1.html(
-                f"""
-                <model-viewer src="data:model/gltf-binary;base64,{b64_glb}"
-                              style="width: 100%; height: 600px;"
-                              autoplay
-                              camera-controls
-                              ar>
-                </model-viewer>
-                <script type="module" src="https://unpkg.com/@google/model-viewer/dist/model-viewer.min.js"></script>
-                """,
-                height=600,
-            )
-    else:
-        st.write("No 3D models found.")
+if models:
+    st.subheader("3D Models")
+    for model_file in models:
+        model_path = os.path.join("generated_images", model_file)
+        glb_data = open(model_path, 'rb').read()
+        b64_glb = base64.b64encode(glb_data).decode("utf-8")
+        st.components.v1.html(
+            f"""
+            <model-viewer src="data:model/gltf-binary;base64,{b64_glb}"
+                          style="width: 100%; height: 600px;"
+                          autoplay
+                          camera-controls
+                          ar>
+            </model-viewer>
+            <script type="module" src="https://unpkg.com/@google/model-viewer/dist/model-viewer.min.js"></script>
+            """,
+            height=600,
+        )
+else:
+    st.write("No 3D models found.")
